@@ -90,4 +90,5 @@ def extract_features(img_pil):
         edge_brown = cv2.bitwise_and(brown_mask, mask_edge)
         water_need = np.sum(edge_brown > 0) / (np.sum(mask_edge > 0) + 1e-5)
 
-    return [g
+     # ⭕ 정상 수정 코드
+    return [g_ratio, float(spot_count), sunlight_index, water_need, large_patch_ratio]
