@@ -26,7 +26,6 @@ st.markdown(
 st.title("Planti - 식물 상태 진단 에이전트")
 st.caption("식물 건강을 간편하게 확인")
 
-# 점수 매핑 사전
 SCORE_MAP = {'정상': 100, '일사량 부족': 60, '물 부족': 60, '병충해': 30}
 
 # --- 0. 로컬 파일 기반 영구 저장 기능 (이전 데이터 보완 처리) ---
@@ -37,7 +36,6 @@ def load_history():
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # 이전 데이터에 score 키가 없을 경우 자동으로 메꿔주는 예외 처리
                 for item in data:
                     if "score" not in item or item["score"] is None:
                         item["score"] = SCORE_MAP.get(item.get("result", "정상"), 100)
@@ -232,7 +230,6 @@ with tab3:
             history_list = st.session_state.history[::-1]
             df = pd.DataFrame(history_list)
             
-            # None 또는 누락된 점수 완벽 보완
             df['score'] = df.apply(
                 lambda row: row['score'] if pd.notnull(row.get('score')) else SCORE_MAP.get(row['result'], 100),
                 axis=1
@@ -250,9 +247,10 @@ with tab3:
                 st.metric(label="총 진단 횟수", value=f"{len(df)}회")
             
             st.divider()
-            st.markdown("### 시간별 식물 건강지수 변화 추이 (100점 만점)")
             
-            # X축 라벨을 번호와 시:분으로 간결화하여 1회차부터 선이 이이지도록 처리
+            # 요기 소제목 문구를 요청대로 변경했어!
+            st.markdown("### 시간별 식물 건강지수 리포트 (100점 만점)")
+            
             chart_data = pd.DataFrame({
                 "건강지수": df["score"].values
             }, index=[f"{i+1}회차 ({t[11:16]})" for i, t in enumerate(df["time"])])
