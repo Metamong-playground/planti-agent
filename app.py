@@ -23,7 +23,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("Planti - 식물 상태 진단 에이전트")
+st.title("🪴 Planti - 식물 상태 진단 에이전트")
 st.caption("식물 건강을 간편하게 확인")
 
 SCORE_MAP = {'정상': 100, '일사량 부족': 60, '물 부족': 60, '병충해': 30}
@@ -248,7 +248,6 @@ with tab3:
             
             st.divider()
             
-            # 요기 소제목 문구를 요청대로 변경했어!
             st.markdown("### 시간별 식물 건강지수 리포트 (100점 만점)")
             
             chart_data = pd.DataFrame({
