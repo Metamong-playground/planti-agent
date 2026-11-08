@@ -164,11 +164,11 @@ def predict_and_display(image):
         "water": f"{water_score:.2f}"
     })
 
-# 4. 사이드바 - 최근 진단 이력
+# 4. 사이드바 - 최근 진단 이력 (문구 변경 반영)
 with st.sidebar:
     st.header("최근 진단 이력")
     if not st.session_state.history:
-        st.write("아직 진단 기록이 없어.")
+        st.write("진단 기록 없음")
     else:
         for idx, item in enumerate(st.session_state.history):
             st.markdown(f"**[{item['time']}] {item['result']}**")
