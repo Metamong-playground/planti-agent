@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import os
 import json
+import pandas as pd
 from datetime import datetime, timezone, timedelta
 from sklearn.ensemble import RandomForestClassifier
 
@@ -151,20 +152,23 @@ def predict_and_display(image):
             if spot_cnt >= 5 and large_patch < 0.03:
                 prediction = 'disease'
                 result_label = '병충해'
+                score = 30
             elif water_score >= 0.10 or large_patch >= 0.03:
                 prediction = 'water'
                 result_label = '물 부족'
+                score = 60
             else:
                 prediction = model.predict([features[:4]])[0]
                 label_map = {'healthy': '정상', 'sunlight': '일사량 부족', 'disease': '병충해', 'water': '물 부족'}
+                score_map = {'healthy': 100, 'sunlight': 60, 'disease': 30, 'water': 60}
                 result_label = label_map.get(prediction, '정상')
+                score = score_map.get(prediction, 100)
                 
             status.update(label="진단 완료", state="complete", expanded=False)
 
     st.divider()
     st.markdown("### 최종 진단 결과")
     
-    # 지정된 진단 텍스트 반영
     if prediction == 'disease':
         st.error("병충해: 병충해가 있어요. 바로 다른 화분과 격리시키고, 매일 매일 꼼꼼히 기생충이나 기생충의 알 등을 없애 주세요!")
     elif prediction == 'water':
@@ -174,13 +178,14 @@ def predict_and_display(image):
     elif prediction == 'healthy':
         st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
 
-    # 한국 표준시(KST, UTC+9) 구하기 (년-월-일 시:분:초)
+    # 한국 표준시(KST, UTC+9) 구하기
     kst_tz = timezone(timedelta(hours=9))
     now_kst = datetime.now(kst_tz).strftime("%Y-%m-%d %H:%M:%S")
     
     new_entry = {
         "time": now_kst,
-        "result": result_label
+        "result": result_label,
+        "score": score
     }
     
     # 중복 저장 방지 체크 후 저장
@@ -188,7 +193,7 @@ def predict_and_display(image):
         st.session_state.history.insert(0, new_entry)
         save_history(st.session_state.history)
 
-# --- 4. 사이드바 - 최근 진단 이력 (한국 표준시 시/분/초 기록 & 세부지표 삭제) ---
+# --- 4. 사이드바 - 최근 진단 이력 ---
 with st.sidebar:
     st.header("최근 진단 이력")
     if not st.session_state.history:
@@ -203,8 +208,8 @@ with st.sidebar:
             save_history([])
             st.rerun()
 
-# --- 5. Streamlit 메인 UI 탭 ---
-tab1, tab2 = st.tabs(["실시간 촬영", "파일 업로드"])
+# --- 5. Streamlit 메인 UI 탭 (그래프/리포트 메뉴 추가) ---
+tab1, tab2, tab3 = st.tabs(["실시간 촬영", "파일 업로드", "건강 리포트 & 그래프"])
 
 with tab1:
     cam_img = st.camera_input("카메라로 촬영")
@@ -217,3 +222,36 @@ with tab2:
     if up_img:
         if st.button("첨부한 사진 진단 확인", key="btn_file"):
             predict_and_display(Image.open(up_img))
+
+with tab3:
+    st.subheader("식물 종합 건강 리포트")
+    st.write("누적된 진단 히스토리를 분석하여 전반적인 건강지수와 추이 그래프를 생성해.")
+    
+    if st.button("건강 리포트 및 그래프 생성", key="btn_graph"):
+        if not st.session_state.history:
+            st.warning("아직 진단 기록이 없어! 식물 사진을 먼저 진단해 줘.")
+        else:
+            # 히스토리 데이터를 역순(시간순)으로 정렬하여 데이터프레임 구성
+            df = pd.DataFrame(st.session_state.history[::-1])
+            
+            # 1) 최근 건강 지수 Metric 출력
+            latest_score = df["score"].iloc[-1]
+            avg_score = df["score"].mean()
+            
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                st.metric(label="최근 진단 건강지수", value=f"{latest_score}점")
+            with col_m2:
+                st.metric(label="평균 건강지수", value=f"{avg_score:.1f}점")
+            with col_m3:
+                st.metric(label="총 진단 횟수", value=f"{len(df)}회")
+            
+            st.divider()
+            
+            # 2) 시간별 식물 건강지수 변화 그래프
+            st.markdown("### 시간별 식물 건강지수 변화 추이 (100점 만점)")
+            chart_df = df.set_index("time")[["score"]]
+            chart_df.columns = ["건강지수"]
+            st.line_chart(chart_df)
+            
+            st.success("건강 리포트 작성이 완료되었습니다!")
