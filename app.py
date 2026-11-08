@@ -26,14 +26,22 @@ st.markdown(
 st.title("Planti - 식물 상태 진단 에이전트")
 st.caption("식물 건강을 간편하게 확인")
 
-# --- 0. 로컬 파일 기반 영구 저장 기능 ---
+# 점수 매핑 사전
+SCORE_MAP = {'정상': 100, '일사량 부족': 60, '물 부족': 60, '병충해': 30}
+
+# --- 0. 로컬 파일 기반 영구 저장 기능 (이전 데이터 보완 처리) ---
 HISTORY_FILE = "planti_history.json"
 
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # 이전 데이터에 score 키가 없을 경우 자동으로 메꿔주는 예외 처리
+                for item in data:
+                    if "score" not in item or item["score"] is None:
+                        item["score"] = SCORE_MAP.get(item.get("result", "정상"), 100)
+                return data
         except Exception:
             return []
     return []
@@ -48,7 +56,7 @@ def save_history(history_data):
 if "history" not in st.session_state:
     st.session_state.history = load_history()
 
-# --- 1. AI 모델 로드 (예외 처리 및 백업) ---
+# --- 1. AI 모델 로드 ---
 @st.cache_resource
 def load_model():
     model_path = "plant_model.pkl"
@@ -58,12 +66,11 @@ def load_model():
         except Exception:
             pass
     
-    # 백업 룰-베이스 머신러닝 분류기
     X_dummy = [
-        [0.6, 1.0, 0.1, 0.0],  # healthy
-        [0.1, 8.0, 0.1, 0.1],  # disease
-        [0.2, 1.0, 0.6, 0.0],  # sunlight
-        [0.2, 1.0, 0.0, 0.5]   # water
+        [0.6, 1.0, 0.1, 0.0],
+        [0.1, 8.0, 0.1, 0.1],
+        [0.2, 1.0, 0.6, 0.0],
+        [0.2, 1.0, 0.0, 0.5]
     ]
     y_dummy = ['healthy', 'disease', 'sunlight', 'water']
     clf = RandomForestClassifier(n_estimators=10, random_state=42)
@@ -72,25 +79,22 @@ def load_model():
 
 model = load_model()
 
-# --- 2. 이미지 면적 비례 동적 반점 및 생리학 지표 추출 함수 ---
+# --- 2. 특성 추출 함수 ---
 def extract_features(img_pil):
     img = np.array(img_pil.convert('RGB'))
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     img = cv2.resize(img, (256, 256))
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     
-    total_pixels = 256 * 256  # 65,536 px
+    total_pixels = 256 * 256
     
-    # 잎 면적 대비 점(Spot) 검출 동적 픽셀 범위 (Bousset et al., 2016)
-    min_spot_area = total_pixels * 0.0001  # 약 6 px
-    max_spot_area = total_pixels * 0.0050  # 약 320 px
+    min_spot_area = total_pixels * 0.0001
+    max_spot_area = total_pixels * 0.0050
     
-    # 1) 녹색 비율 (GLAI)
     lower_green = np.array([35, 40, 40])
     upper_green = np.array([85, 255, 255])
     g_ratio = np.sum(cv2.inRange(hsv, lower_green, upper_green) > 0) / total_pixels
     
-    # 2) 갈색/검은색 반점 덩어리 추출
     lower_brown = np.array([5, 40, 20])
     upper_brown = np.array([30, 255, 200])
     brown_mask = cv2.inRange(hsv, lower_brown, upper_brown)
@@ -110,12 +114,10 @@ def extract_features(img_pil):
             
     large_patch_ratio = large_patch_area / total_pixels
     
-    # 3) 황화 현상 (Zhu et al., 2024)
     lower_yellow = np.array([20, 40, 100])
     upper_yellow = np.array([35, 255, 255])
     sunlight_index = np.sum(cv2.inRange(hsv, lower_yellow, upper_yellow) > 0) / total_pixels
     
-    # 4) 시듦 및 테두리 괴사 현상 (Nevin & Lovatt, 1987)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
     edge_contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -129,7 +131,7 @@ def extract_features(img_pil):
 
     return [g_ratio, float(spot_count), sunlight_index, water_need, large_patch_ratio]
 
-# --- 3. 진단 및 모니터링 출력 모듈 ---
+# --- 3. 진단 출력 및 저장 모듈 ---
 def predict_and_display(image):
     col1, col2 = st.columns([1, 1])
     
@@ -148,7 +150,6 @@ def predict_and_display(image):
             st.write(f"대형 시듦/바램 면적 비율: `{large_patch*100:.2f}%`")
             st.write(f"테두리 수분 스트레스 지수: `{water_score:.3f}`")
             
-            # 학술 임계값 기반 계층 판단 로직 및 점수 부여
             if spot_cnt >= 5 and large_patch < 0.03:
                 prediction = 'disease'
                 result_label = '병충해'
@@ -160,9 +161,8 @@ def predict_and_display(image):
             else:
                 prediction = model.predict([features[:4]])[0]
                 label_map = {'healthy': '정상', 'sunlight': '일사량 부족', 'disease': '병충해', 'water': '물 부족'}
-                score_map = {'healthy': 100, 'sunlight': 60, 'disease': 30, 'water': 60}
                 result_label = label_map.get(prediction, '정상')
-                score = score_map.get(prediction, 100)
+                score = SCORE_MAP.get(result_label, 100)
                 
             status.update(label="진단 완료", state="complete", expanded=False)
 
@@ -178,7 +178,6 @@ def predict_and_display(image):
     elif prediction == 'healthy':
         st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
 
-    # 한국 표준시(KST, UTC+9) 구하기 (년-월-일 시:분:초)
     kst_tz = timezone(timedelta(hours=9))
     now_kst = datetime.now(kst_tz).strftime("%Y-%m-%d %H:%M:%S")
     
@@ -188,12 +187,11 @@ def predict_and_display(image):
         "score": score
     }
     
-    # 중복 저장 방지 체크 후 저장
     if not st.session_state.history or st.session_state.history[0]["time"] != now_kst:
         st.session_state.history.insert(0, new_entry)
         save_history(st.session_state.history)
 
-# --- 4. 사이드바 - 최근 진단 이력 ---
+# --- 4. 사이드바 ---
 with st.sidebar:
     st.header("최근 진단 이력")
     if not st.session_state.history:
@@ -208,7 +206,7 @@ with st.sidebar:
             save_history([])
             st.rerun()
 
-# --- 5. Streamlit 메인 UI 탭 (tab1, tab2, tab3 3개 선언) ---
+# --- 5. 메인 UI 탭 ---
 tab1, tab2, tab3 = st.tabs(["실시간 촬영", "파일 업로드", "건강 리포트 & 그래프"])
 
 with tab1:
@@ -231,31 +229,33 @@ with tab3:
         if not st.session_state.history:
             st.warning("아직 진단 기록이 없어! 식물 사진을 먼저 진단해 줘.")
         else:
-            # 히스토리 데이터를 역순(시간순: 과거 -> 최근)으로 정렬
             history_list = st.session_state.history[::-1]
             df = pd.DataFrame(history_list)
             
-            # 1) 최근 건강 지수 Metric 출력
+            # None 또는 누락된 점수 완벽 보완
+            df['score'] = df.apply(
+                lambda row: row['score'] if pd.notnull(row.get('score')) else SCORE_MAP.get(row['result'], 100),
+                axis=1
+            )
+            
             latest_score = df["score"].iloc[-1]
             avg_score = df["score"].mean()
             
             col_m1, col_m2, col_m3 = st.columns(3)
             with col_m1:
-                st.metric(label="최근 진단 건강지수", value=f"{latest_score}점")
+                st.metric(label="최근 진단 건강지수", value=f"{int(latest_score)}점")
             with col_m2:
                 st.metric(label="평균 건강지수", value=f"{avg_score:.1f}점")
             with col_m3:
                 st.metric(label="총 진단 횟수", value=f"{len(df)}회")
             
             st.divider()
-            
-            # 2) 시간별 식물 건강지수 변화 그래프 (첫 번째 지점 포함 정밀 생성)
             st.markdown("### 시간별 식물 건강지수 변화 추이 (100점 만점)")
             
-            chart_df = pd.DataFrame({
+            # X축 라벨을 번호와 시:분으로 간결화하여 1회차부터 선이 이이지도록 처리
+            chart_data = pd.DataFrame({
                 "건강지수": df["score"].values
             }, index=[f"{i+1}회차 ({t[11:16]})" for i, t in enumerate(df["time"])])
             
-            st.line_chart(chart_df)
-            
+            st.line_chart(chart_data)
             st.success("건강 리포트 작성이 완료되었습니다!")
