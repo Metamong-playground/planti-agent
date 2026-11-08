@@ -50,10 +50,36 @@ def analyze_leaf_image(image_bytes):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     
     # 잎 전체 영역 마스크 (전체 잎 면적 계산용)
-    # 일반적인 녹색~연두색~황색 파장 범위
     lower_leaf = np.array([15, 30, 30])
     upper_leaf = np.array([90, 255, 255])
     leaf_mask = cv2.inRange(hsv, lower_leaf, upper_leaf)
     total_leaf_area = cv2.countNonZero(leaf_mask)
     
+    # 0 나누기 방지
     if total_leaf_area == 0:
+        total_leaf_area = 1
+        
+    # A. 황화 현상 추출 (Zhu et al., 2024)
+    lower_yellow = np.array([15, 80, 80])
+    upper_yellow = np.array([35, 255, 255])
+    yellow_mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+    yellow_pixels = cv2.countNonZero(yellow_mask)
+    yellow_ratio = yellow_pixels / total_leaf_area
+    
+    # B. 어두운 갈색/괴사 영역 추출 (Bousset 2016, Nevin 1987)
+    lower_brown = np.array([0, 40, 20])
+    upper_brown = np.array([20, 255, 150])
+    brown_mask = cv2.inRange(hsv, lower_brown, upper_brown)
+    
+    # 윤곽선(Contours) 검출을 통한 픽셀 크기별 분리
+    contours, _ = cv2.findContours(brown_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    spot_count = 0
+    marginal_necrosis_area = 0
+    
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        # 소형 병반 (6px ~ 320px) -> 병충해 반점 카운트 (Bousset 2016)
+        if 6 <= area <= 320:
+            spot_count += 1
+        # 대형 패치 (> 320px) -> 수분 부족 테두리 괴사 면적 합산 (Nevin 198
