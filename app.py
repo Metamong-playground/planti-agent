@@ -21,7 +21,7 @@ st.markdown(
 )
 
 st.title("Planti - 식물 상태 진단 에이전트")
-st.caption("학술 연구 기준 기반 실시간 식물 건강 모니터링 에이전트")
+st.caption("식물 건강을 간편하게 확인")
 
 # 1. AI 모델 로드 (예외 처리 및 백업)
 @st.cache_resource
