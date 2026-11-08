@@ -4,6 +4,7 @@ import joblib
 import cv2
 import numpy as np
 import os
+import json
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
 
@@ -24,11 +25,29 @@ st.markdown(
 st.title("Planti - 식물 상태 진단 에이전트")
 st.caption("식물 건강을 간편하게 확인")
 
-# 0. 진단 히스토리 세션 상태 초기화
-if "history" not in st.session_state:
-    st.session_state.history = []
+# --- 0. 로컬 파일 기반 영구 저장 기능 (새로고침/재방문해도 유지) ---
+HISTORY_FILE = "planti_history.json"
 
-# 1. AI 모델 로드 (예외 처리 및 백업)
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_history(history_data):
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        pass
+
+if "history" not in st.session_state:
+    st.session_state.history = load_history()
+
+# --- 1. AI 모델 로드 (예외 처리 및 백업) ---
 @st.cache_resource
 def load_model():
     model_path = "plant_model.pkl"
@@ -52,7 +71,7 @@ def load_model():
 
 model = load_model()
 
-# 2. 이미지 면적 비례 동적 반점 및 생리학 지표 추출 함수
+# --- 2. 이미지 면적 비례 동적 반점 및 생리학 지표 추출 함수 ---
 def extract_features(img_pil):
     img = np.array(img_pil.convert('RGB'))
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -109,7 +128,7 @@ def extract_features(img_pil):
 
     return [g_ratio, float(spot_count), sunlight_index, water_need, large_patch_ratio]
 
-# 3. 진단 및 모니터링 출력 모듈
+# --- 3. 진단 및 모니터링 출력 모듈 ---
 def predict_and_display(image):
     col1, col2 = st.columns([1, 1])
     
@@ -155,16 +174,21 @@ def predict_and_display(image):
     elif prediction == 'healthy':
         st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
 
-    # 히스토리에 진단 이력 저장
-    now_str = datetime.now().strftime("%H:%M:%S")
-    st.session_state.history.insert(0, {
+    # 세션 및 파일(JSON)에 진단 이력 영구 저장
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    new_entry = {
         "time": now_str,
         "result": result_label,
         "spots": spot_cnt,
         "water": f"{water_score:.2f}"
-    })
+    }
+    
+    # 중복 저장 방지 체크
+    if not st.session_state.history or st.session_state.history[0]["time"] != now_str:
+        st.session_state.history.insert(0, new_entry)
+        save_history(st.session_state.history)
 
-# 4. 사이드바 - 최근 진단 이력 (문구 변경 반영)
+# --- 4. 사이드바 - 최근 진단 이력 ---
 with st.sidebar:
     st.header("최근 진단 이력")
     if not st.session_state.history:
@@ -176,16 +200,20 @@ with st.sidebar:
             st.divider()
         if st.button("이력 전체 삭제"):
             st.session_state.history = []
+            save_history([])
             st.rerun()
 
-# 5. Streamlit 메인 UI 탭
+# --- 5. Streamlit 메인 UI 탭 ([진단 확인] 버튼 적용) ---
 tab1, tab2 = st.tabs(["실시간 촬영", "파일 업로드"])
+
 with tab1:
     cam_img = st.camera_input("카메라로 촬영")
     if cam_img:
-        predict_and_display(Image.open(cam_img))
+        if st.button("촬영한 사진 진단 확인", key="btn_cam"):
+            predict_and_display(Image.open(cam_img))
 
 with tab2:
     up_img = st.file_uploader("사진 파일 첨부", type=["jpg", "png", "jpeg"])
     if up_img:
-        predict_and_display(Image.open(up_img))
+        if st.button("첨부한 사진 진단 확인", key="btn_file"):
+            predict_and_display(Image.open(up_img))
