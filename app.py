@@ -114,4 +114,78 @@ def predict_and_display(image):
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.image(image, caption="
+        st.image(image, caption="분석 식물 사진", use_container_width=True)
+    
+    with col2:
+        st.subheader("진단 결과")
+        with st.status("해상도 비율 기반 픽셀 텐서 분석 중...", expanded=True) as status:
+            features = extract_features(image)
+            spot_cnt = int(features[1])
+            water_score = features[3]
+            large_patch = features[4]
+            
+            st.write(f"검출된 병반 점(6~320px): `{spot_cnt}개`")
+            st.write(f"대형 시듦/바램 면적 비율: `{large_patch*100:.2f}%`")
+            st.write(f"테두리 수분 스트레스 지수: `{water_score:.3f}`")
+            
+            # 학술 임계값 기반 계층 판단 로직
+            if spot_cnt >= 5 and large_patch < 0.03:
+                prediction = 'disease'
+                result_label = '병충해'
+            elif water_score >= 0.10 or large_patch >= 0.03:
+                prediction = 'water'
+                result_label = '물 부족'
+            else:
+                prediction = model.predict([features[:4]])[0]
+                label_map = {'healthy': '정상', 'sunlight': '일사량 부족', 'disease': '병충해', 'water': '물 부족'}
+                result_label = label_map.get(prediction, '정상')
+                
+            status.update(label="진단 완료", state="complete", expanded=False)
+
+    st.divider()
+    st.markdown("### 최종 진단 결과")
+    
+    # 이모지 제거 및 지정된 진단 텍스트 반영
+    if prediction == 'disease':
+        st.error("병충해: 병충해가 있어요. 바로 다른 화분과 격리시키고, 매일 매일 꼼꼼히 기생충이나 기생충의 알 등을 없애 주세요!")
+    elif prediction == 'water':
+        st.warning("물 부족: 물이 부족해졌습니다. 식물에게 물을 더 주세요")
+    elif prediction == 'sunlight':
+        st.warning("일사량 부족: 햇빛의 양이 부족해졌습니다. 식물에게 태양 빛을 공급해주세요")
+    elif prediction == 'healthy':
+        st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
+
+    # 히스토리에 진단 이력 저장
+    now_str = datetime.now().strftime("%H:%M:%S")
+    st.session_state.history.insert(0, {
+        "time": now_str,
+        "result": result_label,
+        "spots": spot_cnt,
+        "water": f"{water_score:.2f}"
+    })
+
+# 4. 사이드바 - 최근 진단 이력
+with st.sidebar:
+    st.header("최근 진단 이력")
+    if not st.session_state.history:
+        st.write("아직 진단 기록이 없어.")
+    else:
+        for idx, item in enumerate(st.session_state.history):
+            st.markdown(f"**[{item['time']}] {item['result']}**")
+            st.caption(f"반점: {item['spots']}개 | 수분지수: {item['water']}")
+            st.divider()
+        if st.button("이력 전체 삭제"):
+            st.session_state.history = []
+            st.rerun()
+
+# 5. Streamlit 메인 UI 탭
+tab1, tab2 = st.tabs(["실시간 촬영", "파일 업로드"])
+with tab1:
+    cam_img = st.camera_input("카메라로 촬영")
+    if cam_img:
+        predict_and_display(Image.open(cam_img))
+
+with tab2:
+    up_img = st.file_uploader("사진 파일 첨부", type=["jpg", "png", "jpeg"])
+    if up_img:
+        predict_and_display(Image.open(up_img))
