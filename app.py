@@ -8,8 +8,8 @@ from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="Planti AI", layout="wide")
 
-st.title("Planti - 식물 상태 진단 시스템")
-st.caption("학술 연구 기준 기반 실시간 식물 건강 모니터링 시스템")
+st.title("Planti - 식물 상태 진단 에이전트")
+st.caption("학술 연구 기준 기반 실시간 식물 건강 모니터링 에이전트")
 
 # 1. AI 모델 로드 (예외 처리 및 백업)
 @st.cache_resource
@@ -80,68 +80,4 @@ def extract_features(img_pil):
     
     # 4) 시듦 및 테두리 괴사 현상 (Nevin & Lovatt, 1987)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
-    edge_contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    water_need = 0.0
-    if edge_contours:
-        cnt = max(edge_contours, key=cv2.contourArea)
-        mask_edge = np.zeros((256, 256), dtype=np.uint8)
-        cv2.drawContours(mask_edge, [cnt], -1, 255, thickness=20)
-        edge_brown = cv2.bitwise_and(brown_mask, mask_edge)
-        water_need = np.sum(edge_brown > 0) / (np.sum(mask_edge > 0) + 1e-5)
-
-    return [g_ratio, float(spot_count), sunlight_index, water_need, large_patch_ratio]
-
-# 3. 진단 및 모니터링 출력 모듈
-def predict_and_display(image):
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.image(image, caption="분석 식물 사진", use_container_width=True)
-    
-    with col2:
-        st.subheader("정밀 진단 프로세스")
-        with st.status("해상도 비율 기반 픽셀 텐서 분석 중...", expanded=True) as status:
-            features = extract_features(image)
-            spot_cnt = int(features[1])
-            water_score = features[3]
-            large_patch = features[4]
-            
-            st.write(f"검출된 병반 점(6~320px): `{spot_cnt}개`")
-            st.write(f"대형 시듦/바램 면적 비율: `{large_patch*100:.2f}%`")
-            st.write(f"테두리 수분 스트레스 지수: `{water_score:.3f}`")
-            
-            # 학술 임계값 기반 계층 판단 로직
-            if spot_cnt >= 5 and large_patch < 0.03:
-                prediction = 'disease'
-            elif water_score >= 0.10 or large_patch >= 0.03:
-                prediction = 'water'
-            else:
-                prediction = model.predict([features[:4]])[0]
-                
-            status.update(label="진단 완료", state="complete", expanded=False)
-
-    st.divider()
-    st.markdown("### 최종 진단 결과")
-    
-    # 이모지 제거 및 지정된 진단 텍스트 반영
-    if prediction == 'disease':
-        st.error("병충해: 병충해가 있어요. 바로 다른 화분과 격리시키고, 매일 매일 꼼꼼히 기생충이나 기생충의 알 등을 없애 주세요!")
-    elif prediction == 'water':
-        st.warning("물 부족: 물이 부족해졌습니다. 식물에게 물을 더 주세요")
-    elif prediction == 'sunlight':
-        st.warning("일사량 부족: 햇빛의 양이 부족해졌습니다. 식물에게 태양 빛을 공급해주세요")
-    elif prediction == 'healthy':
-        st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
-
-# 4. Streamlit 메인 UI 탭
-tab1, tab2 = st.tabs(["실시간 촬영", "파일 업로드"])
-with tab1:
-    cam_img = st.camera_input("카메라로 촬영")
-    if cam_img:
-        predict_and_display(Image.open(cam_img))
-
-with tab2:
-    up_img = st.file_uploader("사진 파일 첨부", type=["jpg", "png", "jpeg"])
-    if up_img:
-        predict_and_display(Image.open(up_img))
+    _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_
