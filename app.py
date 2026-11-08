@@ -8,6 +8,18 @@ from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="Planti AI", layout="wide")
 
+# 연두색 소프트 파스텔 배경 커스텀 CSS 적용
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #E8F5E9;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("Planti - 식물 상태 진단 에이전트")
 st.caption("학술 연구 기준 기반 실시간 식물 건강 모니터링 에이전트")
 
@@ -90,7 +102,6 @@ def extract_features(img_pil):
         edge_brown = cv2.bitwise_and(brown_mask, mask_edge)
         water_need = np.sum(edge_brown > 0) / (np.sum(mask_edge > 0) + 1e-5)
 
-    # 대괄호 닫힘 수정 부분
     return [g_ratio, float(spot_count), sunlight_index, water_need, large_patch_ratio]
 
 # 3. 진단 및 모니터링 출력 모듈
@@ -135,7 +146,7 @@ def predict_and_display(image):
     elif prediction == 'healthy':
         st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
 
-# 4. Streamlit 메인 UI 탭 (카메라 촬영 / 파일 업로드 정상 출력 부분)
+# 4. Streamlit 메인 UI 탭
 tab1, tab2 = st.tabs(["실시간 촬영", "파일 업로드"])
 with tab1:
     cam_img = st.camera_input("카메라로 촬영")
