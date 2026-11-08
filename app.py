@@ -204,22 +204,27 @@ with st.sidebar:
             save_history([])
             st.rerun()
 
-# --- 5. 메인 UI 탭 ---
-tab1, tab2, tab3 = st.tabs(["실시간 촬영", "파일 업로드", "건강 리포트 & 그래프"])
+# --- 5. 메인 UI 탭 (식물 건강 체크하기 내부에 서브 탭 중첩) ---
+main_tab1, main_tab2 = st.tabs(["🔍 식물 건강 체크하기", "📊 건강 리포트 & 그래프"])
 
-with tab1:
-    cam_img = st.camera_input("카메라로 촬영")
-    if cam_img:
-        if st.button("촬영한 사진 진단 확인", key="btn_cam"):
-            predict_and_display(Image.open(cam_img))
+# 1번 메인 탭: 식물 건강 체크하기 (안에 실시간 촬영 / 파일 업로드 중첩)
+with main_tab1:
+    sub_tab1, sub_tab2 = st.tabs(["📸 실시간 촬영", "📁 파일 업로드"])
+    
+    with sub_tab1:
+        cam_img = st.camera_input("카메라로 촬영")
+        if cam_img:
+            if st.button("촬영한 사진 진단 확인", key="btn_cam"):
+                predict_and_display(Image.open(cam_img))
 
-with tab2:
-    up_img = st.file_uploader("사진 파일 첨부", type=["jpg", "png", "jpeg"])
-    if up_img:
-        if st.button("첨부한 사진 진단 확인", key="btn_file"):
-            predict_and_display(Image.open(up_img))
+    with sub_tab2:
+        up_img = st.file_uploader("사진 파일 첨부", type=["jpg", "png", "jpeg"])
+        if up_img:
+            if st.button("첨부한 사진 진단 확인", key="btn_file"):
+                predict_and_display(Image.open(up_img))
 
-with tab3:
+# 2번 메인 탭: 건강 리포트 & 그래프
+with main_tab2:
     st.subheader("식물 종합 건강 리포트")
     st.write("누적된 진단 히스토리를 분석하여 전반적인 건강지수와 추이 그래프를 생성해.")
     
