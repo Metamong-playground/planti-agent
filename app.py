@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="Planti AI", layout="wide")
@@ -25,7 +25,7 @@ st.markdown(
 st.title("Planti - 식물 상태 진단 에이전트")
 st.caption("식물 건강을 간편하게 확인")
 
-# --- 0. 로컬 파일 기반 영구 저장 기능 (새로고침/재방문해도 유지) ---
+# --- 0. 로컬 파일 기반 영구 저장 기능 ---
 HISTORY_FILE = "planti_history.json"
 
 def load_history():
@@ -41,7 +41,7 @@ def save_history(history_data):
     try:
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history_data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
+    except Exception:
         pass
 
 if "history" not in st.session_state:
@@ -164,7 +164,7 @@ def predict_and_display(image):
     st.divider()
     st.markdown("### 최종 진단 결과")
     
-    # 이모지 제거 및 지정된 진단 텍스트 반영
+    # 지정된 진단 텍스트 반영
     if prediction == 'disease':
         st.error("병충해: 병충해가 있어요. 바로 다른 화분과 격리시키고, 매일 매일 꼼꼼히 기생충이나 기생충의 알 등을 없애 주세요!")
     elif prediction == 'water':
@@ -174,36 +174,36 @@ def predict_and_display(image):
     elif prediction == 'healthy':
         st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
 
-    # 세션 및 파일(JSON)에 진단 이력 영구 저장
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 한국 표준시(KST, UTC+9) 구하기 (년-월-일 시:분:초)
+    kst_tz = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst_tz).strftime("%Y-%m-%d %H:%M:%S")
+    
     new_entry = {
-        "time": now_str,
-        "result": result_label,
-        "spots": spot_cnt,
-        "water": f"{water_score:.2f}"
+        "time": now_kst,
+        "result": result_label
     }
     
-    # 중복 저장 방지 체크
-    if not st.session_state.history or st.session_state.history[0]["time"] != now_str:
+    # 중복 저장 방지 체크 후 저장
+    if not st.session_state.history or st.session_state.history[0]["time"] != now_kst:
         st.session_state.history.insert(0, new_entry)
         save_history(st.session_state.history)
 
-# --- 4. 사이드바 - 최근 진단 이력 ---
+# --- 4. 사이드바 - 최근 진단 이력 (한국 표준시 시/분/초 기록 & 세부지표 삭제) ---
 with st.sidebar:
     st.header("최근 진단 이력")
     if not st.session_state.history:
         st.write("진단 기록 없음")
     else:
-        for idx, item in enumerate(st.session_state.history):
-            st.markdown(f"**[{item['time']}] {item['result']}**")
-            st.caption(f"반점: {item['spots']}개 | 수분지수: {item['water']}")
+        for item in st.session_state.history:
+            st.markdown(f"**진단 결과: {item['result']}**")
+            st.caption(f"일시: {item['time']}")
             st.divider()
         if st.button("이력 전체 삭제"):
             st.session_state.history = []
             save_history([])
             st.rerun()
 
-# --- 5. Streamlit 메인 UI 탭 ([진단 확인] 버튼 적용) ---
+# --- 5. Streamlit 메인 UI 탭 ---
 tab1, tab2 = st.tabs(["실시간 촬영", "파일 업로드"])
 
 with tab1:
