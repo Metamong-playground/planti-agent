@@ -184,5 +184,89 @@ def predict_and_display(image):
             st.warning("물 부족: 물이 부족해졌습니다. 식물에게 물을 더 주세요")
         elif prediction == 'sunlight':
             st.warning("일사량 부족: 햇빛의 양이 부족해졌습니다. 식물에게 태양 빛을 공급해주세요")
-       elif prediction == 'healthy':
+        elif prediction == 'healthy':
             st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
+
+        kst_tz = timezone(timedelta(hours=9))
+        now_kst = datetime.now(kst_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+        new_entry = {
+            "time": now_kst,
+            "result": result_label,
+            "score": score
+        }
+
+        if not st.session_state.history or st.session_state.history[0]["time"] != now_kst:
+            st.session_state.history.insert(0, new_entry)
+            save_history(st.session_state.history)
+
+
+with st.sidebar:
+    st.header("최근 진단 이력")
+    if not st.session_state.history:
+        st.write("진단 기록 없음")
+    else:
+        for item in st.session_state.history:
+            st.markdown(f"**진단 결과: {item['result']}**")
+            st.caption(f"일시: {item['time']}")
+        st.divider()
+        if st.button("이력 전체 삭제"):
+            st.session_state.history = []
+            save_history([])
+            st.rerun()
+
+
+main_tab1, main_tab2 = st.tabs(["🔍 식물 건강 체크하기", "📊 건강 리포트 & 그래프"])
+
+with main_tab1:
+    sub_tab1, sub_tab2 = st.tabs(["📸 실시간 촬영", "📁 파일 업로드"])
+
+    with sub_tab1:
+        cam_img = st.camera_input("카메라로 촬영")
+        if cam_img:
+            if st.button("촬영한 사진 진단 확인", key="btn_cam"):
+                predict_and_display(Image.open(cam_img))
+
+    with sub_tab2:
+        up_img = st.file_uploader("사진 파일 첨부", type=["jpg", "png", "jpeg"])
+        if up_img:
+            if st.button("첨부한 사진 진단 확인", key="btn_file"):
+                predict_and_display(Image.open(up_img))
+
+with main_tab2:
+    st.subheader("식물 종합 건강 리포트")
+    st.write("누적된 진단 히스토리를 분석하여 전반적인 건강지수와 추이 그래프를 생성해.")
+
+    if st.button("건강 리포트 및 그래프 생성", key="btn_graph"):
+        if not st.session_state.history:
+            st.warning("아직 진단 기록이 없어! 식물 사진을 먼저 진단해 줘.")
+        else:
+            history_list = st.session_state.history[::-1]
+            df = pd.DataFrame(history_list)
+
+            df['score'] = df.apply(
+                lambda row: row['score'] if pd.notnull(row.get('score')) else SCORE_MAP.get(row['result'], 100),
+                axis=1
+            )
+
+            latest_score = df["score"].iloc[-1]
+            avg_score = df["score"].mean()
+
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                st.metric(label="최근 진단 건강지수", value=f"{int(latest_score)}점")
+            with col_m2:
+                st.metric(label="평균 건강지수", value=f"{avg_score:.1f}점")
+            with col_m3:
+                st.metric(label="총 진단 횟수", value=f"{len(df)}회")
+
+            st.divider()
+
+            st.markdown("### 시간별 식물 건강지수 리포트 (100점 만점)")
+
+            chart_data = pd.DataFrame({
+                "건강지수": df["score"].values
+            }, index=[f"{i+1}회차 ({t[11:16]})" for i, t in enumerate(df["time"])])
+
+            st.line_chart(chart_data)
+            st.success("건강 리포트 작성이 완료되었습니다!")
