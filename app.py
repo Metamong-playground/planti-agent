@@ -127,6 +127,8 @@ def extract_features(img_pil):
     spot_count = 0
     spot_area_sum = 0.0
 
-    for cnt in contours:
+   for cnt in contours:
         area = cv2.contourArea(cnt)
-        if min
+        if min_spot_area <= area <= max_spot_area:
+            spot_count += 1
+            spot_area_sum += area
