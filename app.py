@@ -184,5 +184,5 @@ def predict_and_display(image):
             st.warning("물 부족: 물이 부족해졌습니다. 식물에게 물을 더 주세요")
         elif prediction == 'sunlight':
             st.warning("일사량 부족: 햇빛의 양이 부족해졌습니다. 식물에게 태양 빛을 공급해주세요")
-        elif prediction == 'healthy':
-            st.success("정상: 식물이 건강한 상태입니다. 현재의
+       elif prediction == 'healthy':
+            st.success("정상: 식물이 건강한 상태입니다. 현재의 환경과 관리를 지속해 주세요.")
