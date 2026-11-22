@@ -11,7 +11,6 @@ from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="Planti AI", layout="wide")
 
-# 연두색 소프트 파스텔 배경 커스텀 CSS 적용
 st.markdown(
     """
     <style>
@@ -28,8 +27,8 @@ st.caption("식물 건강을 간편하게 확인")
 
 SCORE_MAP = {'정상': 100, '일사량 부족': 60, '물 부족': 60, '병충해': 30}
 
-# --- 0. 로컬 파일 기반 영구 저장 기능 (이전 데이터 보완 처리) ---
 HISTORY_FILE = "planti_history.json"
+
 
 def load_history():
     if os.path.exists(HISTORY_FILE):
@@ -44,6 +43,7 @@ def load_history():
             return []
     return []
 
+
 def save_history(history_data):
     try:
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
@@ -51,10 +51,11 @@ def save_history(history_data):
     except Exception:
         pass
 
+
 if "history" not in st.session_state:
     st.session_state.history = load_history()
 
-# --- 1. AI 모델 로드 ---
+
 @st.cache_resource
 def load_model():
     model_path = "plant_model.pkl"
@@ -75,9 +76,10 @@ def load_model():
     clf.fit(X_dummy, y_dummy)
     return clf
 
+
 model = load_model()
 
-# --- 2. 특성 추출 함수 (4가지 핵심 포인트 반영) ---
+
 def extract_features(img_pil):
     img = np.array(img_pil.convert('RGB'))
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -85,7 +87,6 @@ def extract_features(img_pil):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
-    # 배경 제거 후 순수 잎 영역만 추출
     leaf_mask = ((s > 35) & (v > 20)).astype(np.uint8) * 255
     kernel = np.ones((5, 5), np.uint8)
     leaf_mask = cv2.morphologyEx(leaf_mask, cv2.MORPH_CLOSE, kernel)
@@ -96,17 +97,14 @@ def extract_features(img_pil):
         leaf_mask = np.ones((256, 256), dtype=np.uint8) * 255
         total_leaf_pixels = 256 * 256
 
-    # 1) 완벽 잎: 깨끗 초록 비율
     lower_green = np.array([36, 45, 35])
     upper_green = np.array([85, 255, 255])
     g_ratio = np.sum((cv2.inRange(hsv, lower_green, upper_green) > 0) & (leaf_mask > 0)) / total_leaf_pixels
 
-    # 2) 햇빛 부족: 연노랑 비율
     lower_yellow = np.array([20, 45, 110])
     upper_yellow = np.array([35, 255, 255])
     sunlight_index = np.sum((cv2.inRange(hsv, lower_yellow, upper_yellow) > 0) & (leaf_mask > 0)) / total_leaf_pixels
 
-    # 3) 물 부족: 잎 끝(테두리) 갈색 비율
     inner_leaf = cv2.erode(leaf_mask, np.ones((23, 23), np.uint8), iterations=1)
     edge_mask = cv2.subtract(leaf_mask, inner_leaf)
     total_edge_pixels = max(np.sum(edge_mask > 0), 1)
@@ -116,7 +114,6 @@ def extract_features(img_pil):
     brown_mask = cv2.inRange(hsv, lower_brown, upper_brown)
     water_need = np.sum((brown_mask > 0) & (edge_mask > 0)) / total_edge_pixels
 
-    # 4) 병해충: 검은 반점 개수 및 면적 비율
     black_spot_mask = cv2.inRange(hsv, np.array([0, 20, 15]), np.array([25, 255, 85]))
     spot_in_leaf = cv2.bitwise_and(black_spot_mask, inner_leaf)
     blurred = cv2.GaussianBlur(spot_in_leaf, (3, 3), 0)
@@ -127,8 +124,65 @@ def extract_features(img_pil):
     spot_count = 0
     spot_area_sum = 0.0
 
-   for cnt in contours:
+    for cnt in contours:
         area = cv2.contourArea(cnt)
         if min_spot_area <= area <= max_spot_area:
             spot_count += 1
             spot_area_sum += area
+
+    large_patch_ratio = spot_area_sum / total_leaf_pixels
+
+    return [g_ratio, float(spot_count), sunlight_index, water_need, large_patch_ratio]
+
+
+def predict_and_display(image):
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.image(image, caption="분석 식물 사진", use_container_width=True)
+
+    with col2:
+        st.subheader("진단 결과")
+        with st.status("해상도 비율 기반 픽셀 텐서 분석 중...", expanded=True) as status:
+            features = extract_features(image)
+            g_ratio = features[0]
+            spot_cnt = int(features[1])
+            sunlight_idx = features[2]
+            water_score = features[3]
+            large_patch = features[4]
+
+            st.write(f"검출된 병반 점(6~320px): `{spot_cnt}개`")
+            st.write(f"대형 시듦/바램 면적 비율: `{large_patch*100:.2f}%`")
+            st.write(f"테두리 수분 스트레스 지수: `{water_score:.3f}`")
+
+            if spot_cnt >= 4 or large_patch >= 0.035:
+                prediction = 'disease'
+            elif sunlight_idx >= 0.25 and sunlight_idx > water_score:
+                prediction = 'sunlight'
+            elif water_score >= 0.14:
+                prediction = 'water'
+            elif g_ratio >= 0.65 and spot_cnt <= 2 and water_score < 0.10:
+                prediction = 'healthy'
+            else:
+                try:
+                    prediction = model.predict([features])[0]
+                except Exception:
+                    prediction = 'healthy'
+
+            label_map = {'healthy': '정상', 'sunlight': '일사량 부족', 'disease': '병충해', 'water': '물 부족'}
+            result_label = label_map.get(prediction, '정상')
+            score = SCORE_MAP.get(result_label, 100)
+
+            status.update(label="진단 완료", state="complete", expanded=False)
+
+        st.divider()
+        st.markdown("### 최종 진단 결과")
+
+        if prediction == 'disease':
+            st.error("병충해: 병충해가 있어요. 바로 다른 화분과 격리시키고, 매일 매일 꼼꼼히 기생충이나 기생충의 알 등을 없애 주세요!")
+        elif prediction == 'water':
+            st.warning("물 부족: 물이 부족해졌습니다. 식물에게 물을 더 주세요")
+        elif prediction == 'sunlight':
+            st.warning("일사량 부족: 햇빛의 양이 부족해졌습니다. 식물에게 태양 빛을 공급해주세요")
+        elif prediction == 'healthy':
+            st.success("정상: 식물이 건강한 상태입니다. 현재의
